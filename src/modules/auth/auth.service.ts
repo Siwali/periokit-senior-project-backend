@@ -13,7 +13,7 @@ export type ProfileImageUpload = {
 const createUserMetadata = (input: RegisterInput) => ({
   firstName: input.firstName,
   lastName: input.lastName,
-  role: input.role,
+  role: "dentist",
   studentId: input.studentId,
   profileImageUrl: input.profileImageUrl,
 });
@@ -155,7 +155,7 @@ const createPublicUserProfile = async (
       email: input.email,
       first_name: input.firstName,
       last_name: input.lastName,
-      role: input.role,
+      role: "dentist",
       student_id: input.studentId ?? null,
       profile_image_url: profileImagePathOrUrl,
       is_active: true,
@@ -314,7 +314,10 @@ export const logoutUser = async (accessToken: string) => {
   const { error } = await supabaseAdmin.auth.admin.signOut(accessToken, "global");
 
   if (error) {
-    throw error;
+    return {
+      revoked: false,
+      reason: error.message,
+    };
   }
 
   return {

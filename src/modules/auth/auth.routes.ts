@@ -11,8 +11,10 @@ const profileImageUpload = multer({
     fileSize: 5 * 1024 * 1024,
   },
   fileFilter: (_req, file, cb) => {
-    if (!file.mimetype.startsWith("image/")) {
-      cb(new Error("Profile image must be an image file"));
+    const allowedMimeTypes = ["image/jpeg", "image/png", "image/webp"];
+
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      cb(new Error("Profile image must be a JPEG, PNG, or WebP file"));
       return;
     }
 

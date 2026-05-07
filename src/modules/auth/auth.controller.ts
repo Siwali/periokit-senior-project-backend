@@ -91,8 +91,17 @@ export const me = async (req: Request, res: Response) => {
       success: true,
       message: "Authenticated user retrieved successfully",
       data: {
-        user,
-        profile,
+        user: {
+          id: user.id,
+          email: user.email,
+        },
+        profile: {
+          firstName: profile.first_name,
+          lastName: profile.last_name,
+          role: profile.role,
+          studentId: profile.student_id,
+          profileImageUrl: profile.profile_image_url,
+        },
       },
     });
   } catch (error) {
@@ -116,6 +125,15 @@ export const logout = async (req: Request, res: Response) => {
     }
 
     const data = await logoutUser(accessToken);
+
+    if (!data.revoked) {
+      res.status(503).json({
+        success: false,
+        message: "Failed to revoke session server-side",
+        data,
+      });
+      return;
+    }
 
     res.status(200).json({
       success: true,
