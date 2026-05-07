@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import path from "path";
+import { env } from "../../lib/env";
+import { prisma } from "../../lib/prisma";
 import { supabase } from "../../lib/supabase";
 import { LoginInput, RegisterInput } from "./auth.validation";
 
@@ -24,12 +26,8 @@ const removeUndefinedValues = <T extends Record<string, unknown>>(value: T) =>
   );
 
 const createSupabaseAdminClient = () => {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    return null;
-  }
+  const supabaseUrl = env.SUPABASE_URL;
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
 
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: {
@@ -50,10 +48,10 @@ const getRequiredSupabaseAdminClient = () => {
 };
 
 const getProfileImagesBucketName = () =>
-  process.env.SUPABASE_PROFILE_IMAGES_BUCKET ?? "profile-images";
+  env.SUPABASE_PROFILE_IMAGES_BUCKET;
 
 const getProfileImageSignedUrlExpiresIn = () =>
-  Number(process.env.SUPABASE_PROFILE_IMAGE_SIGNED_URL_EXPIRES_IN ?? 604800);
+  env.SUPABASE_PROFILE_IMAGE_SIGNED_URL_EXPIRES_IN;
 
 const getProfileImageExtension = (file: ProfileImageUpload) => {
   const extension = path.extname(file.originalname).toLowerCase();
@@ -143,14 +141,12 @@ const deleteProfileImage = async (
 };
 
 const createPublicUserProfile = async (
-  supabaseAdmin: ReturnType<typeof getRequiredSupabaseAdminClient>,
   input: RegisterInput,
   userId: string,
   profileImagePathOrUrl: string | null
 ) => {
-  const { data, error } = await supabaseAdmin
-    .from("users")
-    .insert({
+  const data = await prisma.public_users.create({
+    data: {
       user_id: userId,
       email: input.email,
       first_name: input.firstName,
@@ -159,31 +155,23 @@ const createPublicUserProfile = async (
       student_id: input.studentId ?? null,
       profile_image_url: profileImagePathOrUrl,
       is_active: true,
-    })
-    .select()
-    .single();
+    },
+  });
 
-  if (error) {
-    throw error;
-  }
-
+  const supabaseAdmin = getRequiredSupabaseAdminClient();
   return withSignedProfileImageUrl(supabaseAdmin, data);
 };
 
-const getPublicUserProfileByUserId = async (
-  supabaseAdmin: ReturnType<typeof getRequiredSupabaseAdminClient>,
-  userId: string
-) => {
-  const { data, error } = await supabaseAdmin
-    .from("users")
-    .select()
-    .eq("user_id", userId)
-    .single();
+const getPublicUserProfileByUserId = async (userId: string) => {
+  const data = await prisma.public_users.findUnique({
+    where: { user_id: userId },
+  });
 
-  if (error) {
-    throw error;
+  if (!data) {
+    throw new Error("User profile not found");
   }
 
+  const supabaseAdmin = getRequiredSupabaseAdminClient();
   return withSignedProfileImageUrl(supabaseAdmin, data);
 };
 
@@ -241,7 +229,6 @@ export const registerUser = async (
     }
 
     profile = await createPublicUserProfile(
-      supabaseAdmin,
       input,
       data.user.id,
       profileImagePathOrUrl
@@ -273,9 +260,7 @@ export const registerUser = async (
 };
 
 export const getAuthenticatedUserProfile = async (userId: string) => {
-  const supabaseAdmin = getRequiredSupabaseAdminClient();
-
-  return getPublicUserProfileByUserId(supabaseAdmin, userId);
+  return getPublicUserProfileByUserId(userId);
 };
 
 export const loginUser = async (input: LoginInput) => {
@@ -303,13 +288,6 @@ export const getUserByAccessToken = async (accessToken: string) => {
 
 export const logoutUser = async (accessToken: string) => {
   const supabaseAdmin = createSupabaseAdminClient();
-
-  if (!supabaseAdmin) {
-    return {
-      revoked: false,
-      reason: "SUPABASE_SERVICE_ROLE_KEY is not configured",
-    };
-  }
 
   const { error } = await supabaseAdmin.auth.admin.signOut(accessToken, "global");
 
