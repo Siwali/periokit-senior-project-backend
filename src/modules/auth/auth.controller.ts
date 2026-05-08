@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { ZodError } from "zod";
+import { AppError, handleError } from "../../utils/errors";
 import {
   getAuthenticatedUserProfile,
   loginUser,
@@ -13,9 +14,6 @@ const formatValidationErrors = (error: ZodError) =>
     path: issue.path.join("."),
     message: issue.message,
   }));
-
-const getErrorMessage = (error: unknown, fallback: string) =>
-  error instanceof Error ? error.message : fallback;
 
 export const register = async (req: Request, res: Response) => {
   const validation = registerSchema.safeParse(req.body);
@@ -38,10 +36,11 @@ export const register = async (req: Request, res: Response) => {
       data,
     });
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: getErrorMessage(error, "Failed to register user"),
-    });
+    if (error instanceof Error && error.message.includes("already registered")) {
+      handleError(res, new AppError("Email already exists", 400), "Failed to register user");
+      return;
+    }
+    handleError(res, error, "Failed to register user");
   }
 };
 
@@ -66,10 +65,11 @@ export const login = async (req: Request, res: Response) => {
       data,
     });
   } catch (error) {
-    res.status(401).json({
-      success: false,
-      message: getErrorMessage(error, "Failed to log in"),
-    });
+    if (error instanceof Error && error.message.includes("Invalid login credentials")) {
+      handleError(res, new AppError("Invalid email or password", 401), "Failed to log in");
+      return;
+    }
+    handleError(res, error, "Failed to log in", 401);
   }
 };
 
@@ -105,10 +105,7 @@ export const me = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: getErrorMessage(error, "Failed to retrieve authenticated user"),
-    });
+    handleError(res, error, "Failed to retrieve authenticated user");
   }
 };
 
@@ -141,9 +138,6 @@ export const logout = async (req: Request, res: Response) => {
       data,
     });
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: getErrorMessage(error, "Failed to log out"),
-    });
+    handleError(res, error, "Failed to log out");
   }
 };
