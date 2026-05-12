@@ -29,12 +29,11 @@ export const authenticate = async (
 
     next();
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Invalid authentication token";
+    console.error("Authentication failed", error);
 
     res.status(401).json({
       success: false,
-      message,
+      message: "Invalid authentication token",
     });
   }
 };

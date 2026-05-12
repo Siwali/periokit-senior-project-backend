@@ -9,6 +9,7 @@ const envSchema = z.object({
   SUPABASE_PROFILE_IMAGE_SIGNED_URL_EXPIRES_IN: z.coerce.number().default(604800),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   ALLOWED_ORIGINS: z.string().optional(),
+  JSON_BODY_LIMIT: z.string().default("1mb"),
 });
 
 export type Env = z.infer<typeof envSchema>;

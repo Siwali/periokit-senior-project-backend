@@ -1,5 +1,4 @@
 import { randomUUID } from "crypto";
-import path from "path";
 import { user_role } from "@prisma/client";
 import { env } from "../../lib/env";
 import { supabase, supabaseAdmin, type SupabaseAdminClient } from "../../lib/supabase";
@@ -35,20 +34,19 @@ const getProfileImageSignedUrlExpiresIn = () =>
   env.SUPABASE_PROFILE_IMAGE_SIGNED_URL_EXPIRES_IN;
 
 const getProfileImageExtension = (file: ProfileImageUpload) => {
-  const extension = path.extname(file.originalname).toLowerCase();
-
-  if (extension) {
-    return extension;
-  }
-
   const mimeExtensions: Record<string, string> = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
     "image/webp": ".webp",
-    "image/gif": ".gif",
   };
 
-  return mimeExtensions[file.mimetype] ?? "";
+  const extension = mimeExtensions[file.mimetype];
+
+  if (!extension) {
+    throw new Error("Unsupported profile image MIME type");
+  }
+
+  return extension;
 };
 
 const uploadProfileImage = async (
