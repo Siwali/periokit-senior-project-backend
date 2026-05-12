@@ -11,6 +11,7 @@ This service provides authentication, user management, and API endpoints for cli
 * TypeScript
 * Prisma ORM
 * Supabase (PostgreSQL + Auth)
+* Apollo Server / GraphQL
 * dotenv
 
 ---
@@ -60,7 +61,19 @@ SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 DATABASE_URL=your_database_url
+ALLOWED_ORIGINS=http://localhost:5173
 ```
+
+---
+
+## API Boundary
+
+The backend is the main boundary between the frontend and Supabase.
+
+* REST handles authentication and upload-oriented commands such as `POST /auth/register`, `POST /auth/login`, and `POST /auth/logout`.
+* GraphQL handles application data through `POST /graphql`.
+* Supabase Auth, Storage, and PostgreSQL access should stay on the backend unless a frontend feature has an explicit, reviewed reason to call Supabase directly.
+* GraphQL `me` is the preferred current-user source of truth. REST `GET /auth/me` is kept temporarily for compatibility and should not be expanded.
 
 ---
 
