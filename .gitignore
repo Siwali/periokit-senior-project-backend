@@ -29,3 +29,4 @@ dist/*
 /generated/prisma
 
 *.txt
+docs/*
