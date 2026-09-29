@@ -9,6 +9,11 @@ import {
 import type { GraphQLContext } from "../context";
 import { requireAuth } from "../guards";
 import { z } from "zod";
+import {
+  XRAY_BOARD_MAX_OBJECTS,
+  XRAY_NOTE_FONT_SIZE,
+  XRAY_SLOT_CODE_PATTERN,
+} from "../../modules/xrays/xrays.contract";
 
 const saveXrayObjectSchema = z
   .object({
@@ -22,7 +27,7 @@ const saveXrayObjectSchema = z
     assetId: z.string().uuid().nullable().optional(),
     slotCode: z
       .string()
-      .regex(/^(?:[1-9]|1[0-8]|io-[1-9])$/, "Unknown X-ray slot code")
+      .regex(XRAY_SLOT_CODE_PATTERN, "Unknown X-ray slot code")
       .nullable()
       .optional(),
     noteText: z.string().nullable().optional(),
@@ -31,7 +36,13 @@ const saveXrayObjectSchema = z
       .regex(/^#[0-9a-fA-F]{6}$/, "noteColor must be #RRGGBB")
       .nullable()
       .optional(),
-    noteFontSize: z.number().int().min(10).max(44).nullable().optional(),
+    noteFontSize: z
+      .number()
+      .int()
+      .min(XRAY_NOTE_FONT_SIZE.min)
+      .max(XRAY_NOTE_FONT_SIZE.max)
+      .nullable()
+      .optional(),
   })
   .superRefine((object, context) => {
     if (object.objectType === "image" && !object.assetId) {
@@ -60,7 +71,7 @@ const saveXrayObjectSchema = z
 const saveXrayBoardSchema = z
   .object({
     visitId: z.string().uuid(),
-    objects: z.array(saveXrayObjectSchema).max(100),
+    objects: z.array(saveXrayObjectSchema).max(XRAY_BOARD_MAX_OBJECTS),
   })
   .superRefine(({ objects }, context) => {
     const seenAssetIds = new Set<string>();
@@ -189,6 +200,23 @@ const toXrayBoard = async (
 });
 
 export const xrayTypeDefs = /* GraphQL */ `
+  enum XrayObjectType {
+    image
+    note
+  }
+
+  enum XrayBoardStatus {
+    draft
+    saved
+  }
+
+  enum XrayAssetStatus {
+    pending
+    active
+    orphaned
+    cleanup_failed
+  }
+
   type XrayAsset {
     id: ID!
     fileName: String!
@@ -196,14 +224,14 @@ export const xrayTypeDefs = /* GraphQL */ `
     fileSize: Int!
     naturalWidth: Int!
     naturalHeight: Int!
-    status: String!
+    status: XrayAssetStatus!
     signedUrl: String!
     urlExpiresAt: String!
   }
 
   type XrayBoardObject {
     id: ID!
-    objectType: String!
+    objectType: XrayObjectType!
     zIndex: Int!
     posX: Int!
     posY: Int!
@@ -220,14 +248,14 @@ export const xrayTypeDefs = /* GraphQL */ `
   type XrayBoard {
     id: ID!
     visitId: ID!
-    status: String!
+    status: XrayBoardStatus!
     savedAt: String
     objects: [XrayBoardObject!]!
     assets: [XrayAsset!]!
   }
 
   input XrayBoardObjectInput {
-    objectType: String!
+    objectType: XrayObjectType!
     zIndex: Int!
     posX: Int!
     posY: Int!

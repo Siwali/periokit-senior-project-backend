@@ -283,4 +283,29 @@ describe("xray resolvers", () => {
     }
     expect(mocks.saveBoard).not.toHaveBeenCalled();
   });
+
+  it("rejects boards with more than 100 objects", async () => {
+    const objects = Array.from({ length: 101 }, (_, index) => ({
+      objectType: "note",
+      zIndex: index,
+      posX: index,
+      posY: index,
+      width: 100,
+      height: 100,
+    }));
+
+    await expect(
+      xrayResolvers.Mutation.saveXrayBoard(
+        {},
+        {
+          input: {
+            visitId: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
+            objects,
+          },
+        },
+        authContext
+      )
+    ).rejects.toMatchObject({ extensions: { code: "BAD_USER_INPUT" } });
+    expect(mocks.saveBoard).not.toHaveBeenCalled();
+  });
 });

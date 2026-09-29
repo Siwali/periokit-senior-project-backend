@@ -1,9 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "../../lib/prisma";
+import {
+  XRAY_BOARD_MAX_OBJECTS,
+  XRAY_NOTE_FONT_SIZE,
+  XRAY_SLOT_CODE_PATTERN,
+  type XrayObjectType,
+} from "./xrays.contract";
 
 export type SaveXrayBoardObject = {
-  objectType: string;
+  objectType: XrayObjectType;
   zIndex: number;
   posX: number;
   posY: number;
@@ -17,25 +24,59 @@ export type SaveXrayBoardObject = {
   noteFontSize?: number | null;
 };
 
-type StoredXrayBoardObject = {
-  id: string;
-  objectType: string;
-  zIndex: number;
-  posX: number;
-  posY: number;
-  width: number;
-  height: number;
-  rotation: number;
-  assetId: string | null;
-  slotCode: string | null;
-  noteText: string | null;
-  noteColor: string | null;
-  noteFontSize: number | null;
-};
+const storedXrayBoardObjectSchema = z
+  .object({
+    id: z.string().uuid(),
+    objectType: z.enum(["image", "note"]),
+    zIndex: z.number().int(),
+    posX: z.number().int(),
+    posY: z.number().int(),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    rotation: z.number().min(0).lt(360),
+    assetId: z.string().uuid().nullable(),
+    slotCode: z.string().regex(XRAY_SLOT_CODE_PATTERN).nullable(),
+    noteText: z.string().nullable(),
+    noteColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable(),
+    noteFontSize: z
+      .number()
+      .int()
+      .min(XRAY_NOTE_FONT_SIZE.min)
+      .max(XRAY_NOTE_FONT_SIZE.max)
+      .nullable(),
+  })
+  .superRefine((object, context) => {
+    if (object.objectType === "image" && !object.assetId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["assetId"],
+        message: "Image objects require assetId",
+      });
+    }
+    if (object.objectType === "note" && object.assetId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["assetId"],
+        message: "Note objects cannot reference an asset",
+      });
+    }
+    if (object.objectType === "note" && object.slotCode) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slotCode"],
+        message: "Note objects cannot occupy an X-ray slot",
+      });
+    }
+  });
+
+type StoredXrayBoardObject = z.infer<typeof storedXrayBoardObjectSchema>;
 
 type XrayCanvasData = {
   elements: StoredXrayBoardObject[];
 };
+
+const roundRotation = (rotation: number | null | undefined) =>
+  Math.min(359.99, Math.round((rotation ?? 0) * 100) / 100);
 
 const createCanvasData = (objects: SaveXrayBoardObject[]): XrayCanvasData => ({
   elements: objects.map((object) => ({
@@ -46,7 +87,7 @@ const createCanvasData = (objects: SaveXrayBoardObject[]): XrayCanvasData => ({
     posY: object.posY,
     width: object.width,
     height: object.height,
-    rotation: object.rotation ?? 0,
+    rotation: roundRotation(object.rotation),
     assetId: object.assetId ?? null,
     slotCode: object.slotCode ?? null,
     noteText: object.noteText ?? null,
@@ -56,17 +97,27 @@ const createCanvasData = (objects: SaveXrayBoardObject[]): XrayCanvasData => ({
 });
 
 const readCanvasObjects = (canvasData: Prisma.JsonValue): StoredXrayBoardObject[] => {
-  if (
-    !canvasData ||
-    Array.isArray(canvasData) ||
-    typeof canvasData !== "object" ||
-    !Array.isArray(canvasData.elements)
-  ) {
-    throw new Error("Invalid X-ray canvas data");
+  const parsed = z
+    .object({ elements: z.array(storedXrayBoardObjectSchema).max(XRAY_BOARD_MAX_OBJECTS) })
+    .safeParse(canvasData);
+
+  if (!parsed.success) throw new Error("Invalid X-ray canvas data");
+
+  const assetIds = new Set<string>();
+  const slotCodes = new Set<string>();
+  for (const object of parsed.data.elements) {
+    if (object.assetId && assetIds.has(object.assetId)) {
+      throw new Error("Invalid X-ray canvas data");
+    }
+    if (object.slotCode && slotCodes.has(object.slotCode)) {
+      throw new Error("Invalid X-ray canvas data");
+    }
+    if (object.assetId) assetIds.add(object.assetId);
+    if (object.slotCode) slotCodes.add(object.slotCode);
   }
 
-  return [...(canvasData.elements as StoredXrayBoardObject[])].sort(
-    (left, right) => left.zIndex - right.zIndex
+  return [...parsed.data.elements].sort(
+    (left, right) => left.zIndex - right.zIndex || left.id.localeCompare(right.id)
   );
 };
 
