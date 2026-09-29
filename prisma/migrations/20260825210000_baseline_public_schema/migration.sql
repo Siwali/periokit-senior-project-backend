@@ -1,4 +1,6 @@
-﻿-- Baseline public application schema generated from prisma/schema.prisma.\n\n-- CreateEnum
+-- Baseline public application schema generated from prisma/schema.prisma.
+
+-- CreateEnum
 CREATE TYPE "public"."user_role" AS ENUM ('admin', 'dentist');
 
 -- CreateEnum

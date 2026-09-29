@@ -221,4 +221,66 @@ describe("xray resolvers", () => {
     ).rejects.toMatchObject({ extensions: { code: "BAD_USER_INPUT" } });
     expect(mocks.saveBoard).not.toHaveBeenCalled();
   });
+
+  it("rejects duplicate assets and occupied slots before opening a transaction", async () => {
+    const assetId = "550e8400-e29b-41d4-a716-446655440000";
+    const image = {
+      objectType: "image",
+      assetId,
+      slotCode: "1",
+      zIndex: 0,
+      posX: 0,
+      posY: 0,
+      width: 100,
+      height: 100,
+    };
+
+    await expect(
+      xrayResolvers.Mutation.saveXrayBoard(
+        {},
+        {
+          input: {
+            visitId: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
+            objects: [image, { ...image, zIndex: 1 }],
+          },
+        },
+        authContext
+      )
+    ).rejects.toMatchObject({ extensions: { code: "BAD_USER_INPUT" } });
+    expect(mocks.saveBoard).not.toHaveBeenCalled();
+  });
+
+  it("rejects unknown slot codes and notes assigned to slots", async () => {
+    for (const object of [
+      {
+        objectType: "image",
+        assetId: "550e8400-e29b-41d4-a716-446655440000",
+        slotCode: "fmx-99",
+      },
+      { objectType: "note", slotCode: "1" },
+    ]) {
+      await expect(
+        xrayResolvers.Mutation.saveXrayBoard(
+          {},
+          {
+            input: {
+              visitId: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
+              objects: [
+                {
+                  ...object,
+                  zIndex: 0,
+                  posX: 0,
+                  posY: 0,
+                  width: 100,
+                  height: 100,
+                },
+              ],
+            },
+          },
+          authContext
+        )
+      ).rejects.toMatchObject({ extensions: { code: "BAD_USER_INPUT" } });
+    }
+    expect(mocks.saveBoard).not.toHaveBeenCalled();
+  });
 });

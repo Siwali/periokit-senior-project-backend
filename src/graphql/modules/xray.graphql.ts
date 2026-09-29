@@ -20,7 +20,11 @@ const saveXrayObjectSchema = z
     height: z.number().int().positive(),
     rotation: z.number().min(0).lt(360).default(0),
     assetId: z.string().uuid().nullable().optional(),
-    slotCode: z.string().max(50).nullable().optional(),
+    slotCode: z
+      .string()
+      .regex(/^(?:[1-9]|1[0-8]|io-[1-9])$/, "Unknown X-ray slot code")
+      .nullable()
+      .optional(),
     noteText: z.string().nullable().optional(),
     noteColor: z
       .string()
@@ -44,12 +48,48 @@ const saveXrayObjectSchema = z
         message: "Note objects cannot reference an asset",
       });
     }
+    if (object.objectType === "note" && object.slotCode) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slotCode"],
+        message: "Note objects cannot occupy an X-ray slot",
+      });
+    }
   });
 
-const saveXrayBoardSchema = z.object({
-  visitId: z.string().uuid(),
-  objects: z.array(saveXrayObjectSchema).max(100),
-});
+const saveXrayBoardSchema = z
+  .object({
+    visitId: z.string().uuid(),
+    objects: z.array(saveXrayObjectSchema).max(100),
+  })
+  .superRefine(({ objects }, context) => {
+    const seenAssetIds = new Set<string>();
+    const seenSlotCodes = new Set<string>();
+
+    for (const [index, object] of objects.entries()) {
+      if (object.assetId) {
+        if (seenAssetIds.has(object.assetId)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["objects", index, "assetId"],
+            message: "An X-ray asset can appear only once on a board",
+          });
+        }
+        seenAssetIds.add(object.assetId);
+      }
+
+      if (object.slotCode) {
+        if (seenSlotCodes.has(object.slotCode)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["objects", index, "slotCode"],
+            message: "An X-ray slot can contain only one image",
+          });
+        }
+        seenSlotCodes.add(object.slotCode);
+      }
+    }
+  });
 
 type XrayAssetRecord = Awaited<ReturnType<typeof xraysRepository.findAssetsByVisitId>>[number];
 

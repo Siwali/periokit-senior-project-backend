@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 
 export type SaveXrayBoardObject = {
@@ -13,6 +15,59 @@ export type SaveXrayBoardObject = {
   noteText?: string | null;
   noteColor?: string | null;
   noteFontSize?: number | null;
+};
+
+type StoredXrayBoardObject = {
+  id: string;
+  objectType: string;
+  zIndex: number;
+  posX: number;
+  posY: number;
+  width: number;
+  height: number;
+  rotation: number;
+  assetId: string | null;
+  slotCode: string | null;
+  noteText: string | null;
+  noteColor: string | null;
+  noteFontSize: number | null;
+};
+
+type XrayCanvasData = {
+  elements: StoredXrayBoardObject[];
+};
+
+const createCanvasData = (objects: SaveXrayBoardObject[]): XrayCanvasData => ({
+  elements: objects.map((object) => ({
+    id: randomUUID(),
+    objectType: object.objectType,
+    zIndex: object.zIndex,
+    posX: object.posX,
+    posY: object.posY,
+    width: object.width,
+    height: object.height,
+    rotation: object.rotation ?? 0,
+    assetId: object.assetId ?? null,
+    slotCode: object.slotCode ?? null,
+    noteText: object.noteText ?? null,
+    noteColor: object.noteColor ?? null,
+    noteFontSize: object.noteFontSize ?? null,
+  })),
+});
+
+const readCanvasObjects = (canvasData: Prisma.JsonValue): StoredXrayBoardObject[] => {
+  if (
+    !canvasData ||
+    Array.isArray(canvasData) ||
+    typeof canvasData !== "object" ||
+    !Array.isArray(canvasData.elements)
+  ) {
+    throw new Error("Invalid X-ray canvas data");
+  }
+
+  return [...(canvasData.elements as StoredXrayBoardObject[])].sort(
+    (left, right) => left.zIndex - right.zIndex
+  );
 };
 
 export class XrayBoardError extends Error {
@@ -77,35 +132,22 @@ export const xraysRepository = {
         throw new XrayBoardError("Invalid asset reference", "FORBIDDEN");
       }
 
+      const canvasData = createCanvasData(objects) as Prisma.InputJsonValue;
+      const savedAt = new Date();
       const board = await tx.xray_boards.upsert({
         where: { visit_id: visitId },
-        create: { visit_id: visitId, status: "saved", saved_at: new Date() },
-        update: { status: "saved", saved_at: new Date() },
+        create: {
+          visit_id: visitId,
+          status: "saved",
+          canvas_data: canvasData,
+          saved_at: savedAt,
+        },
+        update: {
+          status: "saved",
+          canvas_data: canvasData,
+          saved_at: savedAt,
+        },
       });
-
-      await tx.xray_board_objects.deleteMany({
-        where: { board_id: board.board_id },
-      });
-
-      if (objects.length > 0) {
-        await tx.xray_board_objects.createMany({
-          data: objects.map((object) => ({
-            board_id: board.board_id,
-            object_type: object.objectType as any,
-            asset_id: object.assetId ?? null,
-            z_index: object.zIndex,
-            pos_x: object.posX,
-            pos_y: object.posY,
-            width: object.width,
-            height: object.height,
-            rotation: object.rotation ?? 0,
-            slot_code: object.slotCode ?? null,
-            note_text: object.noteText ?? null,
-            note_color: object.noteColor ?? null,
-            note_font_size: object.noteFontSize ?? null,
-          })),
-        });
-      }
 
       await tx.visit_xray_assets.updateMany({
         where: { visit_id: visitId, asset_id: { in: uniqueAssetIds } },
@@ -132,12 +174,29 @@ export const xraysRepository = {
   },
 
   async findBoardByVisitId(visitId: string) {
-    return prisma.xray_boards.findUnique({
+    const board = await prisma.xray_boards.findUnique({
       where: { visit_id: visitId },
-      include: {
-        objects: { orderBy: { z_index: "asc" } },
-      },
     });
+
+    if (!board) return null;
+    return {
+      ...board,
+      objects: readCanvasObjects(board.canvas_data).map((object) => ({
+        object_id: object.id,
+        object_type: object.objectType,
+        z_index: object.zIndex,
+        pos_x: object.posX,
+        pos_y: object.posY,
+        width: object.width,
+        height: object.height,
+        rotation: object.rotation,
+        asset_id: object.assetId,
+        slot_code: object.slotCode,
+        note_text: object.noteText,
+        note_color: object.noteColor,
+        note_font_size: object.noteFontSize,
+      })),
+    };
   },
 
   async findAssetsByVisitId(visitId: string) {
